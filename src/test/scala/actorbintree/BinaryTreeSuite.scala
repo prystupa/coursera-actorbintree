@@ -126,4 +126,40 @@ class BinaryTreeSuite(_system: ActorSystem) extends TestKit(_system) with FunSui
     }
     receiveN(requester, ops, expectedReplies)
   }
+
+  test("recover node after delete") {
+    val requester = TestProbe()
+    val requesterRef = requester.ref
+    val ops = List(
+      Insert(requesterRef, id=100, 1),
+      Remove(requesterRef, id=101, 1),
+      Insert(requesterRef, id=102, 1),
+      Contains(requesterRef, id=103, 1)
+    )
+
+    val expectedReplies = List(
+      OperationFinished(id=100),
+      OperationFinished(id=101),
+      OperationFinished(id=102),
+      ContainsResult(id=103, result = true)
+    )
+
+    verify(requester, ops, expectedReplies)
+  }
+
+  test("deleting non-existing element") {
+    val requester = TestProbe()
+    val requesterRef = requester.ref
+    val ops = List(
+      Remove(requesterRef, id=101, 1),
+      Contains(requesterRef, id=102, 1)
+    )
+
+    val expectedReplies = List(
+      OperationFinished(id=101),
+      ContainsResult(id=102, result = false)
+    )
+
+    verify(requester, ops, expectedReplies)
+  }
 }

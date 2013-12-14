@@ -70,6 +70,7 @@ class BinaryTreeSet extends Actor {
   /** Accepts `Operation` and `GC` messages. */
   val normal: Receive = {
     case operation: Operation => root forward operation
+    case GC =>
     case _ => ???
   }
 
@@ -117,6 +118,10 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
     case insert@Insert(requester, id, e) => {
       if (e < elem) forward(Left, insert)
       if (e > elem) forward(Right, insert)
+      if (e == elem) {
+        removed = false
+        requester ! OperationFinished(id)
+      }
     }
     case op@Remove(requester, id, e) =>
       if (e == elem) {
@@ -124,7 +129,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
         requester ! OperationFinished(id)
       } else subtree(e) match {
         case Some(node) => node forward op
-        case None => OperationFinished(id)
+        case None => requester ! OperationFinished(id)
       }
     case _ => ???
   }
