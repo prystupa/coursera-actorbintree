@@ -91,6 +91,8 @@ class BinaryTreeSet extends Actor with Stash {
     }
     case CopyFinished =>
       context become normal
+      root ! PoisonPill
+      root = newRoot
       unstashAll()
   }
 
@@ -149,7 +151,7 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
       if (!removed) root ! Insert(self, elem, elem)
       val nodes = subtrees.values.toSet
       nodes.foreach(_ ! msg)
-      context.become(copying(nodes, insertConfirmed = false))
+      context.become(copyingNext(nodes, insertConfirmed = removed))
 
     case _ => ???
   }
