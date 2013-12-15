@@ -5,6 +5,7 @@ package actorbintree
 
 import akka.actor._
 import scala.collection.immutable.Queue
+import actorbintree.BinaryTreeNode.{CopyFinished, CopyTo}
 
 object BinaryTreeSet {
 
@@ -52,7 +53,7 @@ object BinaryTreeSet {
 }
 
 
-class BinaryTreeSet extends Actor {
+class BinaryTreeSet extends Actor with Stash {
 
   import BinaryTreeSet._
 
@@ -70,7 +71,11 @@ class BinaryTreeSet extends Actor {
   /** Accepts `Operation` and `GC` messages. */
   val normal: Receive = {
     case operation: Operation => root forward operation
-    case GC =>
+    case GC => {
+      val newRoot = createRoot
+      root ! CopyTo(newRoot)
+      context.become(garbageCollecting(newRoot))
+    }
     case _ => ???
   }
 
@@ -79,7 +84,15 @@ class BinaryTreeSet extends Actor {
     * `newRoot` is the root of the new binary tree where we want to copy
     * all non-removed elements into.
     */
-  def garbageCollecting(newRoot: ActorRef): Receive = ???
+  def garbageCollecting(newRoot: ActorRef): Receive = {
+    case GC => // ignore
+    case operation: Operation => {
+      stash()
+    }
+    case CopyFinished =>
+      context become normal
+      unstashAll()
+  }
 
 }
 
@@ -131,6 +144,13 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
         case Some(node) => node forward op
         case None => requester ! OperationFinished(id)
       }
+
+    case msg@CopyTo(root) =>
+      if (!removed) root ! Insert(self, elem, elem)
+      val nodes = subtrees.values.toSet
+      nodes.foreach(_ ! msg)
+      context.become(copying(nodes, insertConfirmed = false))
+
     case _ => ???
   }
 
@@ -138,7 +158,17 @@ class BinaryTreeNode(val elem: Int, initiallyRemoved: Boolean) extends Actor {
   /** `expected` is the set of ActorRefs whose replies we are waiting for,
     * `insertConfirmed` tracks whether the copy of this node to the new tree has been confirmed.
     */
-  def copying(expected: Set[ActorRef], insertConfirmed: Boolean): Receive = ???
+  def copying(expected: Set[ActorRef], insertConfirmed: Boolean): Receive = {
+    case OperationFinished(`elem`) => context become copyingNext(expected, insertConfirmed = true)
+    case CopyFinished => context become copyingNext(expected - sender, insertConfirmed)
+  }
+
+  private def copyingNext(expected: Set[ActorRef], insertConfirmed: Boolean): Receive =
+    if (expected == Set.empty && insertConfirmed) {
+      context.parent ! CopyFinished
+      normal
+    }
+    else copying(expected, insertConfirmed)
 
   private def subtree(e: Int) = {
     if (e < elem) subtrees.get(Left)
